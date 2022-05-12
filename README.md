@@ -1,6 +1,6 @@
 # `dynlibutils`
 
-`dynlibutils` is a Nim library for easier shared library loading.
+`dynlibutils` is a Nim package for easy shared library loading.
 
 ## Installing
 

@@ -104,19 +104,4 @@ proc unloadLibrary*(self: DynLib) {.raises: [].} =
   if self.handle != nil:
     self.handle.unloadLib
 
-when isMainModule:
-  type
-    MathLib = object
-      handle: LibHandle
-      cbrt: proc (x: cdouble): cdouble {.cdecl.}
-      sqrt {.unchecked.}: proc (x: float64): float64 {.cdecl.}
-  proc main() =
-    let lib = loadLibrary[MathLib]("libm.so(|.6)")
-    echo "cbrt(2.0) = ", lib.cbrt 2.0
-    if lib.sqrt != nil:
-      echo "sqrt(2.0) = ", lib.sqrt 2.0
-    defer:
-      lib.unloadLibrary
-  main()
-
 # vim: set sts=2 et sw=2:

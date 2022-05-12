@@ -2,7 +2,7 @@
 
 version       = "1.0.0"
 author        = "Amun-Ra"
-description   = "Library for easier shared library loading"
+description   = "Package for easy shared library loading"
 license       = "MIT"
 srcDir        = "src"
 
