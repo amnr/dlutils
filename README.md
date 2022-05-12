@@ -2,6 +2,12 @@
 
 `dynlibutils` is a Nim library for easier shared library loading.
 
+## Installing
+
+```sh
+$ make install
+```
+
 ## Basic Usage
 
 ```Nim
