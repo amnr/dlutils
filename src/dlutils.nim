@@ -26,7 +26,7 @@
 import std/dynlib
 import std/macros
 
-import dynlibutils/pragmautils
+import dlutils/pragmautils
 
 export LibHandle, checkedSymAddr, symAddr
 

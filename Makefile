@@ -1,6 +1,11 @@
 # Makefile for nimble project.
 
-all: build
+NIM ?= nim
+
+MAIN_SOURCE ?= $(wildcard src/*.nim)
+
+all:
+	@$(NIM) check --styleCheck=hint --hint:name:off $(MAIN_SOURCE)
 
 build:
 	@nimble build

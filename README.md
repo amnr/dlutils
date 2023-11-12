@@ -1,6 +1,6 @@
-# `dynlibutils`
+# `dlutils`
 
-`dynlibutils` is a Nim package for easy shared library loading.
+`dlutils` is a Nim package for easy shared library loading.
 
 ## Installing
 
@@ -11,6 +11,8 @@ $ make install
 ## Basic Usage
 
 ```Nim
+import dlutils
+
 type
   MathLib = object
     handle: LibHandle

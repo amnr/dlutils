@@ -2,7 +2,7 @@
 
 import std/strformat
 import std/unittest
-import dynlibutils
+import dlutils
 
 when defined macosx:
   const libm = "libm.dynlib"
