@@ -1,6 +1,6 @@
 # config.nims.
 
-switch "deadCodeElim", "on"
+switch "hint", "name:off"
 
 if not defined release:
   switch "hint", "CondTrue:on"

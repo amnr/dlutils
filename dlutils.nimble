@@ -1,9 +1,9 @@
 # Package dlutils.
 
-version       = "1.0.0"
-author        = "Amun-Ra"
-description   = "Package for easy shared library loading"
-license       = "MIT"
+version       = "2.0.0"
+author        = "Amun"
+description   = "Nim package for easy shared library loading."
+license       = "NCSA"
 srcDir        = "src"
 
 import std/os
@@ -21,7 +21,7 @@ task examples, "build examples":
 task gendoc, "build documentation":
   const
     project = projectName()
-    docdir  = &"/tmp/{project}-docs"
+    docdir  = "/tmp/nimdoc/" & project
     docopts = "--hint=Conf=off --hint=SuccessX=off --github.commit=master"
   var ghopts = ""
   if "GITHUB_BASEURL".getEnv != "":
