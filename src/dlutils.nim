@@ -9,17 +9,33 @@
 ##  The open proc tries to load shared library defined in paths and loads
 ##  all symbols defined in body.
 ##
-##  The proc returns `true` on success
-##  or `false` on error (no library found, one of symbols not found).
+##  The proc returns `true` on success or `false` on error (no library found,
+##  one of symbols not found).
 ##  Procs and variables marked with `unchecked`_ pragma do not cause
 ##  open function to faile and are set to `nil`.
 ##
 ##  Allowed definitions in body:
-##  - required proc: `proc (a: cint): cint`
-##  - optional proc: `proc (a: cint): cint {.unchecked.}`
-##  - required variable: `var a: cint`
-##  - optional variable: `var a {.unchecked.}: cint`
+##  - proc: `proc (a: cint): cint`
+##  - var: `var a: cint`
 ##  - `where` statement
+##
+##  Allowed `proc` pragmas:
+##  - `{.importc: "source_name".}` - used when original name is invalid in Nim
+##                                   or you want to change it
+##  - `{.unchecked.}` - used when definiton is optional - the proc pointer
+##                      is set to `nil` if no such proc is found in library
+##  - `{.varargs.}` - used when proc takes varargs
+##
+##  Allowed `var` pragmas:
+##  - `{.importc: "source_name".}` - used when original name is invalid in Nim
+##                                   or you want to change it
+##  - `{.unchecked.}` - used when defintion is optional
+##
+##  All other proc/var pragmas are ignored.
+##
+##  .. note::
+##    Multiple variables in single `var` statement are not allowed.
+##    Use single `var` statement per variable.
 ##
 ##  .. warning::
 ##    Do not add `ptr` to variable type, it's done automatically (variable
@@ -31,11 +47,22 @@
 ##  ```nim
 ##  import dlutils
 ##
+##  # Create open_math_library, close_math_library and proc/var defined in:
 ##  dlgencalls "math", ["libm.so", "libm.so.6"]:
+##    # Required proc. open_math_library returns false if not found.
 ##    proc cbrt (x: cdouble): cdouble
+##
+##    # Optional proc. open_math_library sets sqrt to nil if not found.
 ##    proc sqrt (x: cdouble): cdouble {.unchecked.}
+##
+##    # Function "sqrtf" imported as "sqrt2".
+##    proc sqrt2 (x: cfloat): cfloat {.importc: "sqrtf".}
+##
+##    # Required var of type ptr cint.
 ##    var reqvar: cint
-##    var optvar {.unchecked.}: cint
+##
+##    # Optional var of type ptr clong.
+##    var optvar {.unchecked.}: clong
 ##  ```
 ##
 ##  Generated code
@@ -48,6 +75,7 @@
 ##
 ##  var cbrt*: proc (x, y: cdouble): cdouble {.cdecl, gcsafe, raises: [].} = nil
 ##  var sqrt*: proc (x, y: cdouble): cdouble {.cdecl, gcsafe, raises: [].} = nil
+##  var sqrt2*: proc (x, y: cfloat): cfloat {.cdecl, gcsafe, raises: [].} = nil
 ##  var reqvar*: ptr cint = nil
 ##  var optvar*: ptr clong = nil
 ##
@@ -58,10 +86,13 @@
 ##        math_handle = loadLib "libm.so"
 ##        if math_handle == nil:
 ##          return false
-##        cbrt = cast[sqrt.type](symAddr(math_handle, "cbrt"))
+##        cbrt = cast[cbrt.type](symAddr(math_handle, "cbrt"))
 ##        if cbrt == nil:
 ##          return false
 ##        sqrt = cast[sqrt.type](symAddr(math_handle, "sqrt"))
+##        sqrt2 = cast[sqrt2.type](symAddr(math_handle, "sqrtf"))
+##        if sqrt2 == nil:
+##          return false
 ##        reqvar = cast[reqvar.type](symAddr(math_handle, "reqvar"))
 ##        if reqvar == nil:
 ##          return false
@@ -73,6 +104,7 @@
 ##    if math_handle != nil:
 ##      cbrt = nil
 ##      sqrt = nil
+##      sqrt2 = nil
 ##      reqvar = nil
 ##      optvar = nil
 ##      math_handle.unloadLib
@@ -105,49 +137,90 @@ template unchecked* {.pragma.}
   ##  Functions and variables marked with this pragma do not cause open proc
   ##  to fail and are set to `nil` if not found in shared library.
 
-proc has_pragma(def: NimNode, pragname: string): bool =
-  ##  Return `true` if proc node has given pragma.
-  case def.kind
-  of nnkProcDef:
-    # proc name() {.pragmas.}
-    for p in def.pragma:
-      if $p == pragname:
-        return true
-  of nnkVarSection:
-    # var name {.pragmas.}: type
-    if def[0][0].kind == nnkPragmaExpr:
-      for p in def[0][0][1]:
-        if $p == pragname:
+proc has_pragma(node: NimNode, pragname: string): bool =
+  ##  Return `true` if IdentDefs/ProcDef node has given pragma.
+  node.expectKind {nnkIdentDefs, nnkProcDef}
+
+  if node.kind == nnkIdentDefs:
+    # Node is var.
+    node[0].expectKind {nnkIdent, nnkPragmaExpr}
+
+    if node[0].kind == nnkPragmaExpr:   # var with pragma.
+      node[0][0].expectKind nnkIdent
+      node[0][1].expectKind nnkPragma
+
+      for p in node[0][1]:
+        p.expectKind {nnkExprColonExpr, nnkIdent}
+
+        if p.kind == nnkExprColonExpr and $p[0] == pragname:
+          # var name {.pragma: "value".}: type
           return true
-  else:
-    discard
+        if p.kind == nnkIdent and $p == pragname:
+          # var name {.pragma.}: type
+          return true
+    if node[0].kind == nnkIdent:        # var without pragma.
+      return false
+  elif node.kind == nnkProcDef:
+    # Node is: proc name() {.pragmas.}
+    for p in node.pragma:
+      p.expectKind {nnkExprColonExpr, nnkIdent}
+      if p.kind == nnkIdent and $p == pragname:
+        # Proc pragma is: {.pragma.}
+        return true
+      if p.kind == nnkExprColonExpr and $p[0] == pragname:
+        # Proc pragma is: {.pragma: "value".}
+        return true
   false
 
-proc has_varargs(def: NimNode): bool =
-  ##  Return `true` if proc node has unchecked pragma.
-  def.has_pragma "varargs"
+proc pragma_value(node: NimNode, pragname: string): string =
+  ##  Return the value of IdentDefs/ProcDef pragma or "" if pragma not found.
+  node.expectKind {nnkIdentDefs, nnkProcDef}
+  if node.kind == nnkIdentDefs:
+    node[0].expectKind {nnkIdent, nnkPragmaExpr}
+    if node[0].kind == nnkPragmaExpr:     # var with pragma.
+      node[0][0].expectKind nnkIdent
+      node[0][1].expectKind nnkPragma
+      for p in node[0][1]:
+        p.expectKind {nnkExprColonExpr, nnkIdent}
+        if p.kind == nnkExprColonExpr and $p[0] == pragname:
+          # var name {.pragma: value.}: type
+          return $p[1]
+        if p.kind == nnkIdent and $p == pragname:
+          return ""
+      return ""
+    elif node[0].kind == nnkIdent:        # var without pragma.
+      return ""
+  elif node.kind == nnkProcDef:
+    for p in node.pragma:
+      p.expectKind nnkExprColonExpr
+      if $p[0] == pragname:
+        return $p[1]
+  return ""
+
+proc has_varargs(node: NimNode): bool =
+  ##  Return `true` if proc node has varargs pragma.
+  node.expectKind nnkProcDef
+  node.has_pragma "varargs"
 
 proc is_unchecked(def: NimNode): bool =
-  ##  Return `true` if proc node has unchecked pragma.
+  ##  Return `true` if prov/var node has unchecked pragma.
   def.has_pragma "unchecked"
+
+proc source_name(node: NimNode): string =
+  ##  Return source name stored in importc pragma of proc or var.
+  node.expectKind {nnkProcDef, nnkIdentDefs}
+
+  if node.has_pragma "importc":
+    node.pragma_value "importc"
+  else:
+    $node.name
 
 proc make_proc_node(def: NimNode): NimNode =
   ##  Create `proc` node.
   def.expectKind nnkProcDef
 
-  let arg =
-    if def.is_unchecked:
-      # name* {.unchecked.}.
-      nnkPragmaExpr.newTree(
-        nnkPostfix.newTree(newIdentNode("*"), def.name),
-        nnkPragma.newTree(newIdentNode("unchecked"))
-      )
-    else:
-      # name*.
-      nnkPostfix.newTree(newIdentNode("*"), def.name)
-
   var pragmas =
-    # {.cdecl, gcsafe, raises: [].}.
+    # Default pragmas: {.cdecl, gcsafe, raises: [].}.
     nnkPragma.newTree(
       newIdentNode("cdecl"),
       newIdentNode("gcsafe"),
@@ -157,11 +230,14 @@ proc make_proc_node(def: NimNode): NimNode =
     )
 
   if def.has_varargs:
+    # Optional pragma: varargs.
     pragmas.add newIdentNode "varargs"
 
   nnkVarSection.newTree(
     nnkIdentDefs.newTree(
-      arg,
+      nnkPostfix.newTree(
+        newIdentNode("*"), def.name
+      ),
       nnkProcTy.newTree(
         def.params,
         pragmas
@@ -171,7 +247,8 @@ proc make_proc_node(def: NimNode): NimNode =
   )
 
 proc make_var_node(def: NimNode): NimNode =
-  ##  Create `var` node.
+  ##  Create `var` node from var section.
+  ##  Only single var sections are supported.
   def.expectKind nnkVarSection
   def.expectLen 1
 
@@ -180,6 +257,8 @@ proc make_var_node(def: NimNode): NimNode =
 
   # var x: cint                 -> def[0] == (nnkIdent, nnkIdent, nnkEmpty)
   # var x {.unchecked.}: cint   -> def[0] == (nnkPragmaExpr, nnkIdent, nnkEmpty)
+
+  def[0][0].expectKind {nnkIdent, nnkPragmaExpr}
 
   case def[0][0].kind
   of nnkIdent:
@@ -197,12 +276,12 @@ proc make_var_node(def: NimNode): NimNode =
     return quote do:
       var `name`*: ptr `typ` = nil
   else:
-    error "Expected a node of kind nnkIdent or nnkPragmaExpr, got " &
-          $def[0].kind
+    discard
 
 proc create_global_vars(statements: NimNode): NimNode =
   ##  Create global variables.
   statements.expectKind nnkStmtList
+
   result = nnkStmtList.newTree
   for stmt in statements:
     case stmt.kind
@@ -222,14 +301,15 @@ proc create_global_vars(statements: NimNode): NimNode =
             " or nnkWhenStmt, got " & $stmt.kind
 
 proc create_casts(libhandle: NimNode, statements: NimNode): NimNode =
-  ##  Create proc casts.
+  ##  Create proc cast statements.
   statements.expectKind nnkStmtList
+
   result = nnkStmtList.newTree
   for stmt in statements:
     case stmt.kind
     of nnkProcDef:
       let n = stmt.name
-      let s = $n
+      let s = stmt.source_name
       result.add quote do:
         `n` = cast[`n`.type](`libhandle`.symAddr `s`)
       if not stmt.is_unchecked:
@@ -237,6 +317,7 @@ proc create_casts(libhandle: NimNode, statements: NimNode): NimNode =
           if `n` == nil:
             return false
     of nnkVarSection:
+      stmt[0][0].expectKind {nnkIdent, nnkPragmaExpr}
       var n: NimNode
       case stmt[0][0].kind
       of nnkIdent:
@@ -244,12 +325,13 @@ proc create_casts(libhandle: NimNode, statements: NimNode): NimNode =
       of nnkPragmaExpr:
         n = stmt[0][0][0]
       else:
-        error "Expected a node of kind nnkIdent or nnkPragmaExpr, got " &
-              $stmt[0][0].kind
-      let s = $n
+        discard
+
+      let s = stmt[0].source_name
+
       result.add quote do:
         `n` = cast[`n`.type](`libhandle`.symAddr `s`)
-      if not stmt.is_unchecked:
+      if not stmt[0].is_unchecked:
         result.add quote do:
           if `n` == nil:
             return false

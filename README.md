@@ -18,17 +18,33 @@ and `proc close_math_library()`.
 The open proc tries to load shared library defined in paths and loads
 all symbols defined in body.
 
-The proc returns `true` on success
-or `false` on error (no library found, one of symbols not found).
+The proc returns `true` on success or `false` on error (no library found,
+one of symbols not found).
 Procs and variables marked with `unchecked`_ pragma do not cause
 open function to faile and are set to `nil`.
 
 Allowed definitions in body:
-- required proc: `proc (a: cint): cint`
-- optional proc: `proc (a: cint): cint {.unchecked.}`
-- required variable: `var a: cint`
-- optional variable: `var a {.unchecked.}: cint`
+- proc: `proc (a: cint): cint`
+- var: `var a: cint`
 - `where` statement
+
+Allowed `proc` pragmas:
+- `{.importc: "source_name".}` - used when original name is invalid in Nim
+                                 or you want to change it
+- `{.unchecked.}` - used when definiton is optional - the proc pointer
+                    is set to `nil` if no such proc is found in library
+- `{.varargs.}` - used when proc takes varargs
+
+Allowed `var` pragmas:
+- `{.importc: "source_name".}` - used when original name is invalid in Nim
+                                 or you want to change it
+- `{.unchecked.}` - used when defintion is optional
+
+All other proc/var pragmas are ignored.
+
+> **_Note:_**
+  Multiple variables in single `var` statement are not allowed.
+  Use single `var` statement per variable.
 
 > **_Warning:_**
   Do not add `ptr` to variable type, it's done automatically (variable
@@ -42,10 +58,21 @@ and `proc close_math_library()` functions.
 ```nim
 import dlutils
 
+# Create open_math_library, close_math_library and proc/var defined in:
 dlgencalls "math", ["libm.so", "libm.so.6"]:
+  # Required proc. open_math_library returns false if not found.
   proc cbrt (x: cdouble): cdouble
+
+  # Optional proc. open_math_library sets sqrt to nil if not found.
   proc sqrt (x: cdouble): cdouble {.unchecked.}
+
+  # Function "sqrtf" imported as "sqrt2".
+  proc sqrt2 (x: cfloat): cfloat {.importc: "sqrtf".}
+
+  # Required var of type ptr cint.
   var reqvar: cint
+
+  # Optional var of type ptr clong.
   var optvar {.unchecked.}: clong
 ```
 
@@ -56,15 +83,40 @@ var math_handle: LibHandle = nil
 
 var cbrt*: proc (x, y: cdouble): cdouble {.cdecl, gcsafe, raises: [].} = nil
 var sqrt*: proc (x, y: cdouble): cdouble {.cdecl, gcsafe, raises: [].} = nil
+var sqrt2*: proc (x, y: cfloat): cfloat {.cdecl, gcsafe, raises: [].} = nil
 var reqvar*: ptr cint = nil
 var optvar*: ptr clong = nil
 
-proc open_math_library*(): bool {.raises: [].} =
-  # (generated code)
+proc open_math_library*(): bool =
+  result =
+    ##  Open library.
+    if math_handle == nil:
+      math_handle = loadLib "libm.so"
+      if math_handle == nil:
+        return false
+      cbrt = cast[cbrt.type](symAddr(math_handle, "cbrt"))
+      if cbrt == nil:
+        return false
+      sqrt = cast[sqrt.type](symAddr(math_handle, "sqrt"))
+      sqrt2 = cast[sqrt2.type](symAddr(math_handle, "sqrtf"))
+      if sqrt2 == nil:
+        return false
+      reqvar = cast[reqvar.type](symAddr(math_handle, "reqvar"))
+      if reqvar == nil:
+        return false
+      optvar = cast[optvar.type](symAddr(math_handle, "optvar"))
+    true
 
-proc close_math_library*() {.raises: [].} =
-  # (generated code)
-
+proc close_math_library*() =
+  ##  Close library.
+  if math_handle != nil:
+    cbrt = nil
+    sqrt = nil
+    sqrt2 = nil
+    reqvar = nil
+    optvar = nil
+    math_handle.unloadLib
+    math_handle = nil
 ```
 
 ## Sample Code

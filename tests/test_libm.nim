@@ -1,4 +1,18 @@
 # Simple test using math library.
+#[
+  SPDX-License-Identifier: MIT or NCSA
+]#
+
+discard """
+  action: "run"
+  batchable: true
+  joinable: true
+  matrix: "; -d=release"
+  sortoutput: true
+  valgrind: false
+  targets: "c"
+  disabled: "win"
+"""
 
 import std/strformat
 import std/unittest
