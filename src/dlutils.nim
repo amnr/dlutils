@@ -211,9 +211,19 @@ proc source_name(node: NimNode): string =
   node.expectKind {nnkProcDef, nnkIdentDefs}
 
   if node.has_pragma "importc":
-    node.pragma_value "importc"
+    return node.pragma_value "importc"
   else:
-    $node.name
+    # Variable with pragma or not.
+    # XXX: check above whether there is a pragma at all to simplify
+    #      and not to repeat the checks.
+    if node.kind == nnkProcDef:
+      return $node.name
+    elif node.kind == nnkIdentDefs:
+      node[0].expectKind {nnkIdent, nnkPragmaExpr}
+      if node[0].kind == nnkIdent:
+        return $node[0]
+      if node[0].kind == nnkPragmaExpr:
+        return $node[0][0]
 
 proc make_proc_node(def: NimNode): NimNode =
   ##  Create `proc` node.

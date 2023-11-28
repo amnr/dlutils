@@ -1,6 +1,6 @@
 # Package dlutils.
 
-version       = "2.1.0"
+version       = "2.1.1"
 author        = "Amun"
 description   = "Nim package for easy shared library loading."
 license       = "NCSA"
