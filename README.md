@@ -2,24 +2,33 @@
 
 `dlutils` is a Nim package for easy shared library loading.
 
+See package [documentation](https://amnr.github.io/dlutils/).
+
 ## Installing
 
 ```sh
-$ git clone https://github.com/amnr/dlutils/
-$ cd dlutils
-$ nimble install
+$ nimble install dlutils
 ```
 
 ## Usage
 
-The code below creates `proc open_math_library(): bool`
-and `proc close_math_library()`.
+```nim
+dlgencalls "somelib", paths:
+  # proc and var definitions
+```
+
+`dlgencalls` creates three procs: `proc open_somelib_library(): bool`,
+`proc close_somelib_library()` and `proc last_somelib_error()`.
+
+### Open proc
 
 The open proc tries to load shared library defined in paths and loads
-all symbols defined in body.
+all symbols defined in body. Paths may be either single string or an array
+of strings. Subsequent calls are ignored.
 
-The proc returns `true` on success or `false` on error (no library found,
-one of symbols not found).
+The open proc returns `true` on success or `false` on error (no library
+found, one of symbols not found).
+
 Procs and variables marked with `unchecked`_ pragma do not cause
 open function to faile and are set to `nil`.
 
@@ -27,6 +36,12 @@ Allowed definitions in body:
 - proc: `proc (a: cint): cint`
 - var: `var a: cint`
 - `where` statement
+
+Not allowed in body:
+- export marker `*` in variable; all functions and variables are exported
+  by default
+- multiple variables in single `var` statement; use single `var` statement
+  per variable
 
 Allowed `proc` pragmas:
 - `{.importc: "source_name".}` - used when original name is invalid in Nim
@@ -42,23 +57,33 @@ Allowed `var` pragmas:
 
 All other proc/var pragmas are ignored.
 
-> **_Note:_**
-  Multiple variables in single `var` statement are not allowed.
-  Use single `var` statement per variable.
-
 > **_Warning:_**
   Do not add `ptr` to variable type, it's done automatically (variable
   of type `cint` becomes `ptr cint`).
 
-### Source Code
+### Close proc
 
-This code creates `proc open_math_library(): bool`
-and `proc close_math_library()` functions.
+The close proc unloads the shared library. All symbols loaded are set
+to `nil`. Subsequent calls are ignored.
+
+### Error proc
+
+The error proc returns a human-readable string describing the most recent
+error that occured from a call to `open_name_library()` or empty string on
+no error.
+
+The returned string does not include a trailing newline.
+
+## Example
+
+Source:
 
 ```nim
 import dlutils
 
-# Create open_math_library, close_math_library and proc/var defined in:
+# Create open_math_library, close_math_library, last_math_error
+# and proc/var symbols defined in body.
+
 dlgencalls "math", ["libm.so", "libm.so.6"]:
   # Required proc. open_math_library returns false if not found.
   proc cbrt (x: cdouble): cdouble
@@ -76,7 +101,7 @@ dlgencalls "math", ["libm.so", "libm.so.6"]:
   var optvar {.unchecked.}: clong
 ```
 
-### Generated Code
+Generated Code:
 
 ```nim
 var math_handle: LibHandle = nil
@@ -117,6 +142,12 @@ proc close_math_library*() =
     optvar = nil
     math_handle.unloadLib
     math_handle = nil
+
+proc last_math_error*(): string =
+  ##  Returns the most recent error that occured from a call to open proc.
+  #[
+    code follows…
+  ]#
 ```
 
 ## Sample Code

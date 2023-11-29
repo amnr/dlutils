@@ -3,14 +3,24 @@
 ##  Usage
 ##  -----
 ##
-##  The code below creates `proc open_math_library(): bool`
-##  and `proc close_math_library()`.
+##  ```nim
+##  dlgencalls "somelib", paths:
+##    # proc and var definitions
+##  ```
+##
+##  `dlgencalls` creates three procs: `proc open_somelib_library(): bool`,
+##  `proc close_somelib_library()` and `proc last_somelib_error()`.
+##
+##  Open proc
+##  =========
 ##
 ##  The open proc tries to load shared library defined in paths and loads
-##  all symbols defined in body.
+##  all symbols defined in body. Paths may be either single string or an array
+##  of strings. Subsequent calls are ignored.
 ##
-##  The proc returns `true` on success or `false` on error (no library found,
-##  one of symbols not found).
+##  The open proc returns `true` on success or `false` on error (no library
+##  found, one of symbols not found).
+##
 ##  Procs and variables marked with `unchecked`_ pragma do not cause
 ##  open function to faile and are set to `nil`.
 ##
@@ -18,6 +28,12 @@
 ##  - proc: `proc (a: cint): cint`
 ##  - var: `var a: cint`
 ##  - `where` statement
+##
+##  Not allowed in body:
+##  - export marker `*` in variable; all functions and variables are exported
+##    by default
+##  - multiple variables in single `var` statement; use single `var` statement
+##    per variable
 ##
 ##  Allowed `proc` pragmas:
 ##  - `{.importc: "source_name".}` - used when original name is invalid in Nim
@@ -33,21 +49,36 @@
 ##
 ##  All other proc/var pragmas are ignored.
 ##
-##  .. note::
-##    Multiple variables in single `var` statement are not allowed.
-##    Use single `var` statement per variable.
-##
 ##  .. warning::
 ##    Do not add `ptr` to variable type, it's done automatically (variable
 ##    of type `cint` becomes `ptr cint`).
 ##
-##  Source
-##  ======
+##  Close proc
+##  ==========
+##
+##  The close proc unloads the shared library. All symbols loaded are set
+##  to `nil`. Subsequent calls are ignored.
+##
+##  Error proc
+##  ==========
+##
+##  The error proc returns a human-readable string describing the most recent
+##  error that occured from a call to `open_name_library()` or empty string on
+##  no error.
+##
+##  The returned string does not include a trailing newline.
+##
+##  Example
+##  -------
+##
+##  Source:
 ##
 ##  ```nim
 ##  import dlutils
 ##
-##  # Create open_math_library, close_math_library and proc/var defined in:
+##  # Create open_math_library, close_math_library, last_math_error
+##  # and proc/var symbols defined in body.
+##
 ##  dlgencalls "math", ["libm.so", "libm.so.6"]:
 ##    # Required proc. open_math_library returns false if not found.
 ##    proc cbrt (x: cdouble): cdouble
@@ -65,8 +96,7 @@
 ##    var optvar {.unchecked.}: clong
 ##  ```
 ##
-##  Generated code
-##  ==============
+##  Generated code:
 ##
 ##  ```nim
 ##  import std/dynlib
@@ -109,33 +139,81 @@
 ##      optvar = nil
 ##      math_handle.unloadLib
 ##      math_handle = nil
+##
+##  proc last_math_error*(): string =
+##    ##  Returns the most recent error that occured from a call to open proc.
+##    #[
+##      code follows…
+##    ]#
 ##  ```
 
 {.push raises: [].}
 
 import std/dynlib
 import std/macros
-when defined windows:
-  from std/winlean import getLastError
-
-when defined posix:
-  proc c_dlerror(): cstring {.gcsafe, importc: "dlerror", raises: [].}
-
-proc dlerror*(): string =
-  ##  Return a human-readable string describing the most recent error that
-  ##  occured form a call to `open_name_library()`.
-  when defined posix:
-    $c_dlerror()
-  elif defined windows:
-    result = ""
-    if getLastError() != 0:
-      return "dlopen failed: error " & $getLastError
-  else:
-    {.fatal: "unsupported platform".}
 
 template unchecked* {.pragma.}
   ##  Functions and variables marked with this pragma do not cause open proc
   ##  to fail and are set to `nil` if not found in shared library.
+
+when defined posix:
+  proc c_dlerror(): cstring {.gcsafe, importc: "dlerror", raises: [].}
+elif defined windows:
+  {.pragma: wincall, importc, raises: [], stdcall.}
+
+  type
+    DWORD   = uint32
+    HANDLE  = PVOID
+    HLOCAL  = HANDLE
+    LPCVOID = pointer
+    LPSTR   = pointer
+    PVOID   = pointer
+
+  proc GetLastError(): DWORD {.dynlib: "kernel32", wincall, sideEffect.}
+
+  proc FormatMessageA(flags: DWORD, source: LPCVOID, message_id: DWORD,
+                      language_id: DWORD, buffer: LPSTR, size: DWORD,
+                      args: pointer): DWORD {.dynlib: "kernel32", wincall.}
+
+  proc LocalFree(mem: HLOCAL): HLOCAL {.dynlib: "kernel32", wincall.}
+
+proc error_message(): string =
+  ##  Return a human-readable string describing the most recent error that
+  ##  occured from a call to `open_name_library()` or empty string on no error.
+  ##
+  ##  The returned string does not include a trailing newline.
+  ##
+  ##  On Windows it returns:
+  ##    - "Module not found." -- DLL was not found.
+  ##    - "Procedure not found."  -- A function/variable was not found in DLL.
+  ##                                 No additional information is supplied.
+  when defined posix:
+    return $c_dlerror()
+  elif defined windows:
+    const flags = 0x00000100 or   # FORMAT_MESSAGE_ALLOCATE_BUFFER
+                  0x00001000 or   # FORMAT_MESSAGE_FROM_SYSTEM
+                  0x00000200      # FORMAT_MESSAGE_IGNORE_INSERTS
+
+    # FormatMessageA returns "Success.\r\n" on no error.
+    let err = GetLastError()
+    if err == 0:
+      return ""
+
+    # FormatMessageA returns the number of characters stored in buffer,
+    # excluding the terminating null character.
+    var buf: cstring = nil
+    if FormatMessageA(flags, nil, err, 0, buf.addr, 0, nil) != 0:
+      result = $buf
+      # Strip "\r\n".
+      if result.len >= 2 and result[^2] == '\r' and result[^1] == '\n':
+        result.setLen result.len - 2
+    else:
+      result = ""
+
+    # It is safe to pass nil to LocalFree.
+    discard LocalFree buf
+  else:
+    {.fatal: "unsupported platform".}
 
 proc has_pragma(node: NimNode, pragname: string): bool =
   ##  Return `true` if IdentDefs/ProcDef node has given pragma.
@@ -391,17 +469,23 @@ proc create_nils(statements: NimNode): NimNode =
 
 macro dlgencalls*(name: static string, libpaths: static openArray[string],
                   body: untyped): untyped =
-  ##  Create `open_name_library(): bool`, `close_name_library()`
-  ##  and C procesures and variables declared in `body`.
+  ##  Create `open_name_library(): bool`, `close_name_library()`,
+  ##  `last_name_error(): string` and C procedures/variables declared in `body`.
   ##
   ##  Function `open_name_library()` tries to load shared libary defined
   ##  in `libpaths` and loads all symbols defined in `body`. This function
   ##  returns `true` on success or `false` on error (no library found,
   ##  symbol not found). Functions and variables marked with `unchecked`_
-  ##  pragam are set to `nil`.
+  ##  pragam are set to `nil`. Subsequent calls are ignored.
   ##
-  ##  Function `close_name_library()` sets all symbols to `nil` and closes
-  ##  the library.
+  ##  `close_name_library()` proc unloads the shared library. All symbols
+  ##  loaded are set to `nil`. Subsequent calls are ignored.
+  ##
+  ##  `last_name_error()` proc returns a human-readable string describing
+  ##  the most recent error that occured from a call to `open_name_library()`
+  ##  or empty string on no error.
+  ##
+  ##  The returned string does not include a trailing newline.
 
   # Check args.
   # libpaths.expectKind {nnkStrLit, nnkSym}
@@ -409,9 +493,12 @@ macro dlgencalls*(name: static string, libpaths: static openArray[string],
 
   # Library handle name.
   let soname = $name
-  let libhandle = newIdentNode(soname & "_handle")
-  let init_name = newIdentNode("open_" & $soname & "_library")
-  let deinit_name = newIdentNode("close_" & $soname & "_library")
+  let libhandle = newIdentNode soname & "_handle"
+  let
+    init_name = newIdentNode "open_" & $soname & "_library"
+    deinit_name = newIdentNode "close_" & $soname & "_library"
+    dlerror_name = newIdentNode "last_" & $soname & "_error"
+    dlerror_str = "last_" & $soname & "_error"
 
   let
     procs = create_global_vars body
@@ -442,19 +529,34 @@ macro dlgencalls*(name: static string, libpaths: static openArray[string],
         `libhandle`.unloadLib
         `libhandle` = nil
 
+    proc `dlerror_name`*(): string {.inline.} =
+      ##  Return a human-readable string describing the most recent error that
+      ##  occured from a call to `open_name_library()` or empty string on
+      ##  no error.
+      ##
+      ##  The returned string does not include a trailing newline.
+      ##
+      ##  On POSIX it returns:
+      ##    - "libname.so: cannot open shared object file: No such file or directory"
+      ##    - "/lib/path/libname.so: undefined symbol: foo"
+      ##
+      ##  On Windows it returns:
+      ##    - "Module not found." -- DLL was not found.
+      ##    - "Procedure not found."  -- A function/variable was not found in DLL.
+      ##                                 No additional information is supplied.
+      error_message()
+
+    proc dlerror*(): string {.deprecated: "Use " & `dlerror_str` & " instead".} =
+      `dlerror_name`()
+
 template dlgencalls*(name: static string, libpath: static string,
                      body: untyped): untyped =
-  ##  Create `open_name_library(): bool`, `close_name_library()`
-  ##  and C procesures and variables declared in `body`.
+  ##  Create `open_name_library(): bool`, `close_name_library()`,
+  ##  `last_name_error(): string` and C procedures/variables declared in `body`.
   ##
-  ##  Function `open_name_library()` tries to load shared libary defined
-  ##  in `libpath` and loads all symbols defined in `body`. This function
-  ##  returns `true` on success or `false` on error (no library found,
-  ##  symbol not found). Functions and variables marked with `unchecked`_
-  ##  pragam are set to `nil`.
+  ##  Accepts single library path.
   ##
-  ##  Function `close_name_library()` sets all symbols to `nil` and closes
-  ##  the library.
+  ##  See `dlgencalls <#dlgencalls,staticstring,staticopenArray[string],untyped>`_ for details.
   dlgencalls name, [libpath], body
 
 # vim: set sts=2 et sw=2:

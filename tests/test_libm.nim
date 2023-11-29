@@ -1,4 +1,4 @@
-# Simple test using math library.
+##  Test shared library loading on POSIX.
 #[
   SPDX-License-Identifier: MIT or NCSA
 ]#
@@ -11,6 +11,7 @@ discard """
   sortoutput: true
   valgrind: false
   targets: "c"
+  disabled: "macosx"
   disabled: "win"
 """
 
