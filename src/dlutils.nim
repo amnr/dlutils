@@ -62,9 +62,8 @@
 ##  Error proc
 ##  ==========
 ##
-##  The error proc returns a human-readable string describing the most recent
-##  error that occured from a call to `open_name_library()` or empty string on
-##  no error.
+##  The error proc returns a human-readable string describing the error that
+##  occured from a call to `open_name_library()` or empty string on no error.
 ##
 ##  The returned string does not include a trailing newline.
 ##
@@ -141,7 +140,8 @@
 ##      math_handle = nil
 ##
 ##  proc last_math_error*(): string =
-##    ##  Returns the most recent error that occured from a call to open proc.
+##    ##  Returns a string describing the error that occured from a call
+##    ##  to open proc.
 ##    #[
 ##      code follows…
 ##    ]#
@@ -178,8 +178,8 @@ elif defined windows:
   proc LocalFree(mem: HLOCAL): HLOCAL {.dynlib: "kernel32", wincall.}
 
 proc error_message(): string =
-  ##  Return a human-readable string describing the most recent error that
-  ##  occured from a call to `open_name_library()` or empty string on no error.
+  ##  Return a human-readable string describing the error that occured
+  ##  from a call to `open_name_library()` or empty string on no error.
   ##
   ##  The returned string does not include a trailing newline.
   ##
@@ -482,8 +482,8 @@ macro dlgencalls*(name: static string, libpaths: static openArray[string],
   ##  loaded are set to `nil`. Subsequent calls are ignored.
   ##
   ##  `last_name_error()` proc returns a human-readable string describing
-  ##  the most recent error that occured from a call to `open_name_library()`
-  ##  or empty string on no error.
+  ##  the error that occured from a call to `open_name_library()` or empty
+  ##  string on no error.
   ##
   ##  The returned string does not include a trailing newline.
 
@@ -530,9 +530,8 @@ macro dlgencalls*(name: static string, libpaths: static openArray[string],
         `libhandle` = nil
 
     proc `dlerror_name`*(): string {.inline.} =
-      ##  Return a human-readable string describing the most recent error that
-      ##  occured from a call to `open_name_library()` or empty string on
-      ##  no error.
+      ##  Return a human-readable string describing the error that occured
+      ##  from a call to `open_name_library()` or empty string on no error.
       ##
       ##  The returned string does not include a trailing newline.
       ##
@@ -546,7 +545,7 @@ macro dlgencalls*(name: static string, libpaths: static openArray[string],
       ##                                 No additional information is supplied.
       error_message()
 
-    proc dlerror*(): string {.deprecated: "Use " & `dlerror_str` & " instead".} =
+    proc dlerror*(): string {.deprecated: "Use " & `dlerror_str` & " instead.".} =
       `dlerror_name`()
 
 template dlgencalls*(name: static string, libpath: static string,
