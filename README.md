@@ -10,6 +10,10 @@ See package [documentation](https://amnr.github.io/dlutils/).
 $ nimble install dlutils
 ```
 
+## Configuration
+
+Set `-d=uselogging` to turn logging on (via `std/logging`).
+
 ## Usage
 
 ```nim

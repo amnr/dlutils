@@ -150,6 +150,8 @@
 {.push raises: [].}
 
 import std/dynlib
+when defined uselogging:
+  import std/logging
 import std/macros
 
 template unchecked* {.pragma.}
@@ -214,6 +216,13 @@ proc error_message(): string =
     discard LocalFree buf
   else:
     {.fatal: "unsupported platform".}
+
+when defined uselogging:
+  proc log_symbol_error(symbol: string) =
+    try:
+      error "dlutils: Failed to load symbol '", symbol, "': ", error_message()
+    except:
+      discard
 
 proc has_pragma(node: NimNode, pragname: string): bool =
   ##  Return `true` if IdentDefs/ProcDef node has given pragma.
@@ -403,6 +412,8 @@ proc create_casts(libhandle: NimNode, statements: NimNode): NimNode =
       if not stmt.is_unchecked:
         result.add quote do:
           if `n` == nil:
+            when defined use_logging:
+              log_symbol_error `s`
             return false
     of nnkVarSection:
       stmt[0][0].expectKind {nnkIdent, nnkPragmaExpr}
@@ -422,6 +433,8 @@ proc create_casts(libhandle: NimNode, statements: NimNode): NimNode =
       if not stmt[0].is_unchecked:
         result.add quote do:
           if `n` == nil:
+            when defined use_logging:
+              log_symbol_error `s`
             return false
     of nnkWhenStmt:
       # WhenStmt(ElifBranch(<<condition>>, StmtList(<<statement>>)))
@@ -510,25 +523,6 @@ macro dlgencalls*(name: static string, libpaths: static openArray[string],
 
     `procs`
 
-    proc `init_name`*(): bool =
-      ##  Open library.
-      if `libhandle` == nil:
-        for path in `libpaths`:
-          `libhandle` = loadLib path
-          if `libhandle` != nil:
-            break
-        if `libhandle` == nil:
-          return false
-        `pvars`
-      true
-
-    proc `deinit_name`*() =
-      ##  Close library.
-      if `libhandle` != nil:
-        `nills`
-        `libhandle`.unloadLib
-        `libhandle` = nil
-
     proc `dlerror_name`*(): string {.inline.} =
       ##  Return a human-readable string describing the error that occured
       ##  from a call to `open_name_library()` or empty string on no error.
@@ -544,6 +538,41 @@ macro dlgencalls*(name: static string, libpaths: static openArray[string],
       ##    - "Procedure not found."  -- A function/variable was not found in DLL.
       ##                                 No additional information is supplied.
       error_message()
+
+    proc `init_name`*(): bool =
+      ##  Open library.
+      if `libhandle` == nil:
+        for path in `libpaths`:
+          when defined uselogging:
+            try:
+              debug "dlutils: Loading ", `soname` , " library, path ", path
+            except:
+              discard
+          `libhandle` = loadLib path
+          if `libhandle` != nil:
+            break
+        if `libhandle` == nil:
+          when defined uselogging:
+            try:
+              error "dlutils: Failed to load ", `soname`, " library: ",
+                    `dlerror_name`()
+            except:
+              discard
+          return false
+        `pvars`
+      true
+
+    proc `deinit_name`*() =
+      ##  Close library.
+      when defined uselogging:
+        try:
+          debug "dlutils: Closing ", `soname`, " library"
+        except:
+          discard
+      if `libhandle` != nil:
+        `nills`
+        `libhandle`.unloadLib
+        `libhandle` = nil
 
     proc dlerror*(): string {.deprecated: "Use " & `dlerror_str` & " instead.".} =
       `dlerror_name`()
