@@ -33,6 +33,8 @@ elif defined mingw64:
   switch "gcc.options.linker", "-Wl,-Bstatic -lpthread"
   switch "gcc.cpp.options.linker", ""
 
-#  #info "Compiling for Windows 32-bit using mingw32"
+when defined sanitize:
+  switch "passc", "-fsanitize=address,undefined"
+  switch "passl", "-lasan -lubsan"
 
 # vim: set sts=2 et sw=2:

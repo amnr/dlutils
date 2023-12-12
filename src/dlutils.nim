@@ -102,9 +102,9 @@
 ##
 ##  var math_handle: LibHandle = nil
 ##
-##  var cbrt*: proc (x, y: cdouble): cdouble {.cdecl, gcsafe, raises: [].} = nil
-##  var sqrt*: proc (x, y: cdouble): cdouble {.cdecl, gcsafe, raises: [].} = nil
-##  var sqrt2*: proc (x, y: cfloat): cfloat {.cdecl, gcsafe, raises: [].} = nil
+##  var cbrt*: proc (x, y: cdouble): cdouble {.cdecl, raises: [].} = nil
+##  var sqrt*: proc (x, y: cdouble): cdouble {.cdecl, raises: [].} = nil
+##  var sqrt2*: proc (x, y: cfloat): cfloat {.cdecl, raises: [].} = nil
 ##  var reqvar*: ptr cint = nil
 ##  var optvar*: ptr clong = nil
 ##
@@ -320,7 +320,7 @@ proc make_proc_node(def: NimNode): NimNode =
     # Default pragmas: {.cdecl, gcsafe, raises: [].}.
     nnkPragma.newTree(
       newIdentNode("cdecl"),
-      newIdentNode("gcsafe"),
+      # newIdentNode("gcsafe"),
       nnkExprColonExpr.newTree(
         newIdentNode("raises"), nnkBracket.newTree()
       )

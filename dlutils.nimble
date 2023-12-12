@@ -1,9 +1,9 @@
 # Package dlutils.
 
-version       = "2.1.3"
+version       = "2.1.4"
 author        = "Amun"
 description   = "Nim package for easy shared library loading."
-license       = "NCSA"
+license       = "MIT OR NCSA"
 srcDir        = "src"
 
 import std/os

@@ -110,9 +110,9 @@ Generated Code:
 ```nim
 var math_handle: LibHandle = nil
 
-var cbrt*: proc (x, y: cdouble): cdouble {.cdecl, gcsafe, raises: [].} = nil
-var sqrt*: proc (x, y: cdouble): cdouble {.cdecl, gcsafe, raises: [].} = nil
-var sqrt2*: proc (x, y: cfloat): cfloat {.cdecl, gcsafe, raises: [].} = nil
+var cbrt*: proc (x, y: cdouble): cdouble {.cdecl, raises: [].} = nil
+var sqrt*: proc (x, y: cdouble): cdouble {.cdecl, raises: [].} = nil
+var sqrt2*: proc (x, y: cfloat): cfloat {.cdecl, raises: [].} = nil
 var reqvar*: ptr cint = nil
 var optvar*: ptr clong = nil
 
